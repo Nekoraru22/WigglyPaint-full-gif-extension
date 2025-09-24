@@ -1,10 +1,13 @@
 // ==UserScript==
-// @name        GIF Capture Script for WigglyPaint
-// @namespace   Violentmonkey Scripts
-// @match       https://wigglypaint.net/es*
-// @grant       none
-// @version     1.0
-// @author      Nekoraru22 (https://github.com/Nekoraru22)
+// @name        GIF Capture Script for WigglyPaint
+// @namespace   Violentmonkey Scripts
+// @match       https://wigglypaint.net/es*
+// @grant       none
+// @grant       GM_getResourceURL
+// @require     https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js
+// @resource    gifWorker https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js
+// @version     1.0
+// @author      Nekoraru22 (https://github.com/Nekoraru22)
 // @description 24/9/2025, 19:45:58
 // ==/UserScript==
 
@@ -56,17 +59,75 @@
             return true;
         }
 
-        // Create GIF binary data
-        createGIF() {
-            console.log("TODO")
+        async renderGIF() {
+            try {
+                const gifBlob = await this.createGIF();
+                if (!gifBlob) return null;
+                
+                return URL.createObjectURL(gifBlob);
+            } catch (error) {
+                console.error('Error rendering GIF:', error);
+                return null;
+            }
         }
 
-        async renderGIF() {
-            const gifData = this.createGIF();
-            if (!gifData) return null;
+        // Create GIF binary data
+        async createGIF() {
+            if (this.frames.length === 0) {
+                console.log('No frames to encode');
+                return null;
+            }
+
+            console.log(`Creating GIF with ${this.frames.length} frames...`);
             
-            const blob = new Blob([gifData], { type: 'image/gif' });
-            return URL.createObjectURL(blob);
+            // Get the URL for the local worker script
+            const workerScriptUrl = GM_getResourceURL('gifWorker');
+
+            return new Promise((resolve, reject) => {
+                // Create new GIF instance
+                const gif = new GIF({
+                    workers: 2,
+                    quality: 10,
+                    width: this.width,
+                    height: this.height,
+                    workerScript: workerScriptUrl // Use the local URL here!
+                });
+
+                // Add all captured frames to the GIF
+                for (let i = 0; i < this.frames.length; i++) {
+                    // Create a temporary canvas to draw the ImageData
+                    const tempCanvas = document.createElement('canvas');
+                    tempCanvas.width = this.width;
+                    tempCanvas.height = this.height;
+                    const tempCtx = tempCanvas.getContext('2d');
+                    
+                    // Put the ImageData onto the temporary canvas
+                    tempCtx.putImageData(this.frames[i], 0, 0);
+                    
+                    // Add frame to GIF with corresponding delay
+                    gif.addFrame(tempCanvas, {
+                        delay: this.delays[i] * 10 // gif.js expects delay in milliseconds
+                    });
+                }
+
+                // Set up event listeners
+                gif.on('finished', (blob) => {
+                    console.log('GIF creation completed successfully');
+                    resolve(blob);
+                });
+
+                gif.on('progress', (progress) => {
+                    console.log(`GIF encoding progress: ${Math.round(progress * 100)}%`);
+                });
+
+                gif.on('abort', () => {
+                    console.log('GIF creation aborted');
+                    reject(new Error('GIF creation was aborted'));
+                });
+
+                // Start rendering the GIF
+                gif.render();
+            });
         }
     }
 
