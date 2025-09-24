@@ -41,30 +41,15 @@ function checkWritegif() {
         console.log('✅ You can use it as: writegif(frames, delays)');
         const originalWritegif = window.writegif;
 
-
         writegif = (frames, delays) => {
             console.log('=== writegif called ===');
             console.log('Number of frames:', frames?.length);
             console.log('Frames data:', frames);
             console.log('Delays:', delays);
-
-            // Modify each frame to increase size.x and size.y by +200
-            const modifiedFrames = frames.map(frame => {
-                return {
-                    ...frame,  // Keep all original properties
-                    size: {
-                        ...frame.size,  // Keep original w and h
-                        x: 512,
-                        y: 342
-                    }
-                };
-            });
-
-            console.log('Modified frames:', modifiedFrames);
             console.log('========================');
 
             // Call original function with modified frames
-            return originalWritegif(modifiedFrames, delays);
+            return originalWritegif(frames, delays);
         }
     } else {
         console.log('❌ writegif is not available');

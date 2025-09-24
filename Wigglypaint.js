@@ -20,6 +20,7 @@
             this.height = height;
             this.frames = [];
             this.delays = [];
+            this.frameHashes = [];
             this.colorTable = [];
             this.globalColorTable = null;
         }
@@ -31,31 +32,81 @@
             // Check if frame is duplicate
             if (!this.isDuplicateFrame(imageData)) {
                 this.frames.push(imageData);
-                this.delays.push(Math.max(10, Math.floor(delay / 10))); // GIF delay is in centiseconds
+                this.delays.push(delay);
+                
+                // Store hash if using hash method
+                this.frameHashes.push(this.generateFrameHash(imageData));
                 return true;
+            } else {
+                console.log('Duplicate frame skipped');
+                return false;
             }
-            return false;
+        }
+
+        generateFrameHash(imageData) {
+            const pixels = imageData.data;
+            let hash1 = 0;
+            let hash2 = 0;
+            
+            // Create two different hashes for better collision resistance
+            const step = Math.max(1, Math.floor(pixels.length / 1000)); // Sample ~1000 pixels
+            
+            for (let i = 0; i < pixels.length; i += step * 4) { // Skip by RGBA groups
+                // First hash using R and G channels
+                hash1 = ((hash1 << 5) - hash1 + pixels[i] + (pixels[i + 1] << 8)) & 0xffffffff;
+                // Second hash using B and A channels
+                hash2 = ((hash2 << 3) - hash2 + pixels[i + 2] + (pixels[i + 3] << 8)) & 0xffffffff;
+            }
+            
+            return `${hash1}-${hash2}`;
         }
 
         isDuplicateFrame(newImageData) {
             if (this.frames.length === 0) return false;
             
-            const lastFrame = this.frames[this.frames.length - 1];
-            if (lastFrame.width !== newImageData.width || lastFrame.height !== newImageData.height) {
-                return false;
-            }
-
-            const lastPixels = lastFrame.data;
-            const newPixels = newImageData.data;
-
-            for (let i = 0; i < lastPixels.length; i += 4) {
-                if (lastPixels[i] !== newPixels[i] || 
-                    lastPixels[i + 1] !== newPixels[i + 1] || 
-                    lastPixels[i + 2] !== newPixels[i + 2] || 
-                    lastPixels[i + 3] !== newPixels[i + 3]) {
-                    return false;
+            // First, try hash comparison (fast)
+            const newHash = this.generateFrameHash(newImageData);
+            
+            for (let i = 0; i < this.frameHashes.length; i++) {
+                if (this.frameHashes[i] === newHash) {
+                    // Hash match found, do pixel-level verification to avoid false positives
+                    if (this.areFramesActuallyIdentical(newImageData, this.frames[i])) {
+                        console.log(`Frame is duplicate of frame ${i} (verified)`);
+                        return true;
+                    } else {
+                        console.log(`Hash collision detected for frame ${i}, but frames are different`);
+                    }
                 }
             }
+            
+            return false;
+        }
+
+        // Pixel-level verification method
+        areFramesActuallyIdentical(imageData1, imageData2, tolerance = 3) {
+            const pixels1 = imageData1.data;
+            const pixels2 = imageData2.data;
+            
+            if (pixels1.length !== pixels2.length) return false;
+            
+            let differentPixels = 0;
+            const maxDifferentPixels = Math.floor(pixels1.length / 4 * 0.001); // 0.1% tolerance
+            
+            // Check every 4th pixel for performance (still very accurate)
+            for (let i = 0; i < pixels1.length; i += 16) { // Sample every 4th pixel
+                const rDiff = Math.abs(pixels1[i] - pixels2[i]);
+                const gDiff = Math.abs(pixels1[i + 1] - pixels2[i + 1]);
+                const bDiff = Math.abs(pixels1[i + 2] - pixels2[i + 2]);
+                const aDiff = Math.abs(pixels1[i + 3] - pixels2[i + 3]);
+                
+                if (rDiff > tolerance || gDiff > tolerance || bDiff > tolerance || aDiff > tolerance) {
+                    differentPixels++;
+                    if (differentPixels > maxDifferentPixels) {
+                        return false;
+                    }
+                }
+            }
+            
             return true;
         }
 
@@ -105,7 +156,7 @@
                     
                     // Add frame to GIF with corresponding delay
                     gif.addFrame(tempCanvas, {
-                        delay: this.delays[i] * 10 // gif.js expects delay in milliseconds
+                        delay: this.delays[i]
                     });
                 }
 
@@ -300,7 +351,7 @@
         });
 
         captureBtn.addEventListener('click', () => {
-            startGifCapture(canvas, 100, 3, status, progressBar, progressContainer, captureBtn);
+            startGifCapture(canvas, 10, 3, status, progressBar, progressContainer, captureBtn);
         });
     }
 
@@ -345,7 +396,7 @@
 
     // Function to handle the recursive frame capturing loop
     async function captureFrameLoop(encoder, canvas, frameDelay, totalFrames, statusElement, progressBar) {
-        let capturedFrames = 0; // The counter now belongs to this function
+        let capturedFrames = 0;
         
         return new Promise(resolve => {
             let frameCount = 0;
@@ -357,16 +408,17 @@
 
                 const result = encoder.addFrame(canvas, frameDelay);
                 if (result) {
-                    capturedFrames++; // Incrementing the local counter
+                    capturedFrames++;
                     console.log(`Frame ${frameCount} captured successfully`);
                 } else {
                     console.log(`Frame ${frameCount} was a duplicate and skipped`);
+                    frameCount--;
                 }
 
                 if (frameCount < totalFrames) {
                     setTimeout(capture, frameDelay);
                 } else {
-                    resolve(capturedFrames); // Resolve with the final count
+                    resolve(capturedFrames);
                 }
             }
             capture();
