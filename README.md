@@ -24,7 +24,7 @@ This tool is perfect for artists who want to quickly share their creations witho
 This is a **userscript**, which means it requires a browser extension like **Violentmonkey** or **Tampermonkey** to run.
 
 1.  **Install a Userscript Manager:** If you don't have one, install either [Violentmonkey](https://violentmonkey.github.io/get-it/) or [Tampermonkey](https://www.tampermonkey.net/).
-2.  **Go to the Script's Raw Page:** Click on the `Raw` button for the `main.js` script in this repository.
+2.  [**Go to the Script's Raw Page**](https://github.com/Nekoraru22/WigglyPaint-full-gif-extension/releases/download/v0.1.0/Wigglypaint.user.js)
 3.  **Install the Script:** Your userscript manager will detect the script and prompt you to install it. Confirm the installation.
 
 That's it! The script will now be active every time you visit `https://wigglypaint.net/`.
