@@ -24,7 +24,7 @@
             this.globalColorTable = null;
         }
 
-        addFrame(canvas, delay = 500) {
+        addFrame(canvas, delay) {
             const ctx = canvas.getContext('2d');
             const imageData = ctx.getImageData(0, 0, this.width, this.height);
             
@@ -77,7 +77,6 @@
                 console.log('No frames to encode');
                 return null;
             }
-
             console.log(`Creating GIF with ${this.frames.length} frames...`);
             
             // Get the URL for the local worker script
@@ -86,11 +85,11 @@
             return new Promise((resolve, reject) => {
                 // Create new GIF instance
                 const gif = new GIF({
-                    workers: 2,
+                    workers: 1,
                     quality: 10,
                     width: this.width,
                     height: this.height,
-                    workerScript: workerScriptUrl // Use the local URL here!
+                    workerScript: workerScriptUrl
                 });
 
                 // Add all captured frames to the GIF
@@ -139,7 +138,7 @@
     function initGifCapture() {
         try {
             const iframe = document.querySelector('iframe');
-            if (!iframe || !iframe.contentDocument) {
+            if (!iframe?.contentDocument) {
                 console.log('Iframe not found, retrying...');
                 setTimeout(initGifCapture, 1000);
                 return;
@@ -301,81 +300,116 @@
         });
 
         captureBtn.addEventListener('click', () => {
-            captureAsGif(canvas, 100, 3, status, progressBar, progressContainer, captureBtn);
+            startGifCapture(canvas, 100, 3, status, progressBar, progressContainer, captureBtn);
         });
     }
 
-    // Create actual GIF
-    function captureAsGif(canvas, frameDelay, totalFrames, statusElement, progressBar, progressContainer, captureBtn) {
+    // Function to handle the entire GIF capture process
+    function startGifCapture(canvas, frameDelay, totalFrames, statusElement, progressBar, progressContainer, captureBtn) {
+        // Prepare UI and state for capture
+        setupCaptureUI(statusElement, progressBar, progressContainer, captureBtn);
         const encoder = new GIFEncoder(canvas.width, canvas.height);
-        let frameCount = 0;
-        let capturedFrames = 0;
 
+        // Start capturing frames
+        setTimeout(() => {
+            captureFrameLoop(
+                encoder, 
+                canvas, 
+                frameDelay, 
+                totalFrames, 
+                statusElement, 
+                progressBar
+            ).then((capturedFrames) => {
+                // Once frames are captured, render the GIF
+                renderAndDownloadGIF(
+                    encoder, 
+                    statusElement, 
+                    progressBar, 
+                    progressContainer, 
+                    captureBtn, 
+                    capturedFrames
+                );
+            });
+        }, 1000);
+    }
+
+    // Function to set up the UI state before capture begins
+    function setupCaptureUI(statusElement, progressBar, progressContainer, captureBtn) {
         captureBtn.disabled = true;
         captureBtn.style.opacity = '0.6';
         captureBtn.style.cursor = 'not-allowed';
         progressContainer.style.display = 'block';
-
-        function captureFrame() {
-            frameCount++;
-            const progress = (frameCount / totalFrames) * 100;
-            progressBar.style.width = `${Math.min(progress, 90)}%`;
-            statusElement.textContent = `📸 Capturing frame ${frameCount}/${totalFrames}...`;
-
-            const result = encoder.addFrame(canvas, frameDelay);
-            if (result) {
-                capturedFrames++;
-                console.log(`Frame ${frameCount} captured successfully`);
-            } else {
-                console.log(`Frame ${frameCount} was a duplicate and skipped`);
-            }
-
-            if (frameCount < totalFrames) {
-                setTimeout(captureFrame, frameDelay);
-            } else {
-                progressBar.style.width = '95%';
-                statusElement.textContent = '🎬 Creating GIF...';
-                
-                setTimeout(async () => {
-                    try {
-                        const gifUrl = await encoder.renderGIF();
-                        if (gifUrl && capturedFrames > 0) {
-                            // Create download link
-                            const link = document.createElement('a');
-                            link.download = `wigglypaint-animation-${new Date().getTime()}.gif`;
-                            link.href = gifUrl;
-                            link.style.display = 'none';
-                            document.body.appendChild(link);
-                            link.click();
-                            document.body.removeChild(link);
-                            
-                            progressBar.style.width = '100%';
-                            statusElement.textContent = `🎉 GIF saved! (${capturedFrames} frames)`;
-                            
-                            // Clean up URL
-                            setTimeout(() => URL.revokeObjectURL(gifUrl), 5000);
-                        } else {
-                            statusElement.textContent = '❌ No frames captured or error occurred';
-                        }
-                    } catch (error) {
-                        console.error('Error creating GIF:', error);
-                        statusElement.textContent = '❌ Error creating GIF';
-                    }
-                    
-                    // Reset UI
-                    setTimeout(() => {
-                        progressContainer.style.display = 'none';
-                        progressBar.style.width = '0%';
-                        statusElement.textContent = 'Ready to capture ✨';
-                        captureBtn.disabled = false;
-                        captureBtn.style.opacity = '1';
-                        captureBtn.style.cursor = 'pointer';
-                    }, 3000);
-                }, 500);
-            }
-        }
-
         statusElement.textContent = '⏳ Starting capture in 1 second...';
-        setTimeout(captureFrame, 1000);
+        progressBar.style.width = '0%'; // Reset progress bar
+    }
+
+    // Function to handle the recursive frame capturing loop
+    async function captureFrameLoop(encoder, canvas, frameDelay, totalFrames, statusElement, progressBar) {
+        let capturedFrames = 0; // The counter now belongs to this function
+        
+        return new Promise(resolve => {
+            let frameCount = 0;
+            function capture() {
+                frameCount++;
+                const progress = (frameCount / totalFrames) * 100;
+                progressBar.style.width = `${Math.min(progress, 90)}%`;
+                statusElement.textContent = `📸 Capturing frame ${frameCount}/${totalFrames}...`;
+
+                const result = encoder.addFrame(canvas, frameDelay);
+                if (result) {
+                    capturedFrames++; // Incrementing the local counter
+                    console.log(`Frame ${frameCount} captured successfully`);
+                } else {
+                    console.log(`Frame ${frameCount} was a duplicate and skipped`);
+                }
+
+                if (frameCount < totalFrames) {
+                    setTimeout(capture, frameDelay);
+                } else {
+                    resolve(capturedFrames); // Resolve with the final count
+                }
+            }
+            capture();
+        });
+    }
+
+    // Function to handle the final rendering, downloading, and UI reset
+    async function renderAndDownloadGIF(encoder, statusElement, progressBar, progressContainer, captureBtn, capturedFrames) {
+        progressBar.style.width = '95%';
+        statusElement.textContent = '🎬 Creating GIF...';
+
+        try {
+            const gifUrl = await encoder.renderGIF();
+
+            if (gifUrl && capturedFrames > 0) {
+                // Create and trigger download
+                const link = document.createElement('a');
+                link.download = `wigglypaint-animation-${new Date().getTime()}.gif`;
+                link.href = gifUrl;
+                link.style.display = 'none';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                
+                progressBar.style.width = '100%';
+                statusElement.textContent = `🎉 GIF saved! (${capturedFrames} frames)`;
+                setTimeout(() => URL.revokeObjectURL(gifUrl), 5000); // Clean up
+            } else {
+                statusElement.textContent = '❌ No frames captured or error occurred';
+            }
+        } catch (error) {
+            console.error('Error creating GIF:', error);
+            statusElement.textContent = '❌ Error creating GIF';
+        } finally {
+            // Reset UI regardless of success or failure
+            setTimeout(() => {
+                progressContainer.style.display = 'none';
+                progressBar.style.width = '0%';
+                statusElement.textContent = 'Ready to capture ✨';
+                captureBtn.disabled = false;
+                captureBtn.style.opacity = '1';
+                captureBtn.style.cursor = 'pointer';
+            }, 3000);
+        }
     }
 })();
