@@ -11,79 +11,101 @@
 (function() {
     'use strict';
 
-    class SimpleGIFEncoder {
-        constructor(width, height, quality = 10) {
+    class GIFEncoder {
+        constructor(width, height) {
             this.width = width;
             this.height = height;
-            this.quality = quality;
             this.frames = [];
+            this.delays = [];
+            this.colorTable = [];
+            this.globalColorTable = null;
         }
 
         addFrame(canvas, delay = 500) {
             const ctx = canvas.getContext('2d');
-            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-            // Add if is not the same as the saved ones
-            if (!this.frames.some(frame => this.isSameFrame(frame.data, imageData))) {
-                this.frames.push({
-                    data: imageData,
-                    delay: delay
-                });
+            const imageData = ctx.getImageData(0, 0, this.width, this.height);
+            
+            // Check if frame is duplicate
+            if (!this.isDuplicateFrame(imageData)) {
+                this.frames.push(imageData);
+                this.delays.push(Math.max(10, Math.floor(delay / 10))); // GIF delay is in centiseconds
                 return true;
             }
             return false;
         }
 
-        isSameFrame(frameData, newData) {
-            if (frameData.width !== newData.width || frameData.height !== newData.height) return false;
+        isDuplicateFrame(newImageData) {
+            if (this.frames.length === 0) return false;
+            
+            const lastFrame = this.frames[this.frames.length - 1];
+            if (lastFrame.width !== newImageData.width || lastFrame.height !== newImageData.height) {
+                return false;
+            }
 
-            const framePixels = frameData.data;
-            const newPixels = newData.data;
+            const lastPixels = lastFrame.data;
+            const newPixels = newImageData.data;
 
-            for (let i = 0; i < framePixels.length; i++) {
-                if (framePixels[i] !== newPixels[i]) return false;
+            for (let i = 0; i < lastPixels.length; i += 4) {
+                if (lastPixels[i] !== newPixels[i] || 
+                    lastPixels[i + 1] !== newPixels[i + 1] || 
+                    lastPixels[i + 2] !== newPixels[i + 2] || 
+                    lastPixels[i + 3] !== newPixels[i + 3]) {
+                    return false;
+                }
             }
             return true;
         }
 
-        async renderAsAPNG() {
-            if (this.frames.length === 0) return null;
-            const zip = await this.createFrameZip();
-            return zip;
+        // Create GIF binary data
+        createGIF() {
+            console.log("TODO")
         }
 
-        // Create downloadable frames as individual images
-        async createFrameZip() {
-            const frames = [];
-            for (let i = 0; i < this.frames.length; i++) {
-                const canvas = document.createElement('canvas');
-                canvas.width = this.width;
-                canvas.height = this.height;
-                const ctx = canvas.getContext('2d');
-                ctx.putImageData(this.frames[i].data, 0, 0);
-
-                const dataURL = canvas.toDataURL('image/png');
-                frames.push({
-                    name: `frame_${i + 1}.png`,
-                    data: dataURL
-                });
-            }
-            return frames;
+        async renderGIF() {
+            const gifData = this.createGIF();
+            if (!gifData) return null;
+            
+            const blob = new Blob([gifData], { type: 'image/gif' });
+            return URL.createObjectURL(blob);
         }
     }
 
     // Initialize when page loads
     window.addEventListener('load', function() {
-        initGifCapture();
+        setTimeout(initGifCapture, 1000);
     });
 
     function initGifCapture() {
-        const canvas = document.querySelector('iframe').contentDocument.body.querySelector("#display")
-        console.log('Canvas found:', canvas);
-        createControlPanel(canvas);
+        try {
+            const iframe = document.querySelector('iframe');
+            if (!iframe || !iframe.contentDocument) {
+                console.log('Iframe not found, retrying...');
+                setTimeout(initGifCapture, 1000);
+                return;
+            }
+            
+            const canvas = iframe.contentDocument.body.querySelector("#display");
+            if (!canvas) {
+                console.log('Canvas not found, retrying...');
+                setTimeout(initGifCapture, 1000);
+                return;
+            }
+            
+            console.log('Canvas found:', canvas);
+            createControlPanel(canvas);
+        } catch (error) {
+            console.log('Error accessing iframe content, retrying...', error);
+            setTimeout(initGifCapture, 1000);
+        }
     }
 
     function createControlPanel(canvas) {
+        // Remove existing panel if any
+        const existingPanel = document.getElementById('gif-capture-panel');
+        if (existingPanel) {
+            existingPanel.remove();
+        }
+
         // Create floating control panel
         const panel = document.createElement('div');
         panel.id = 'gif-capture-panel';
@@ -91,62 +113,123 @@
             position: fixed;
             top: 20px;
             right: 20px;
-            background: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            padding: 15px;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
             z-index: 10000;
-            font-family: Arial, sans-serif;
-            min-width: 250px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            min-width: 280px;
+            backdrop-filter: blur(10px);
         `;
+
+        // Title
+        const title = document.createElement('div');
+        title.style.cssText = `
+            font-size: 16px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        `;
+        title.innerHTML = '🎬 Neko GIF Capturer';
 
         // Capture button
         const captureBtn = document.createElement('button');
-        captureBtn.textContent = 'Save GIF';
+        captureBtn.textContent = '🎥 Capture GIF';
         captureBtn.style.cssText = `
             width: 100%;
-            padding: 10px;
-            background: #007bff;
+            padding: 12px;
+            background: linear-gradient(135deg, #ff6b6b, #ee5a52);
             color: white;
             border: none;
-            border-radius: 4px;
+            border-radius: 8px;
             cursor: pointer;
             margin-bottom: 10px;
             font-weight: bold;
+            font-size: 14px;
+            transition: all 0.2s ease;
         `;
+
+        captureBtn.addEventListener('mouseenter', () => {
+            captureBtn.style.transform = 'translateY(-2px)';
+            captureBtn.style.boxShadow = '0 6px 20px rgba(255, 107, 107, 0.4)';
+        });
+
+        captureBtn.addEventListener('mouseleave', () => {
+            captureBtn.style.transform = 'translateY(0)';
+            captureBtn.style.boxShadow = 'none';
+        });
+
+        // Progress bar
+        const progressContainer = document.createElement('div');
+        progressContainer.style.cssText = `
+            width: 100%;
+            height: 4px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 2px;
+            margin-bottom: 10px;
+            overflow: hidden;
+            display: none;
+        `;
+
+        const progressBar = document.createElement('div');
+        progressBar.style.cssText = `
+            height: 100%;
+            background: linear-gradient(90deg, #4facfe, #00f2fe);
+            width: 0%;
+            transition: width 0.3s ease;
+        `;
+        progressContainer.appendChild(progressBar);
 
         // Status display
         const status = document.createElement('div');
         status.style.cssText = `
             font-size: 12px;
-            color: #ccc;
+            color: rgba(255,255,255,0.8);
             min-height: 20px;
+            text-align: center;
         `;
-        status.textContent = 'Ready to capture';
+        status.textContent = 'Ready to capture ✨';
 
         // Close button
         const closeBtn = document.createElement('button');
         closeBtn.textContent = '×';
         closeBtn.style.cssText = `
             position: absolute;
-            top: 5px;
-            right: 10px;
+            top: 8px;
+            right: 12px;
             background: transparent;
-            color: white;
+            color: rgba(255,255,255,0.7);
             border: none;
-            font-size: 18px;
+            font-size: 20px;
             cursor: pointer;
-            width: 20px;
-            height: 20px;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
         `;
+
+        closeBtn.addEventListener('mouseenter', () => {
+            closeBtn.style.background = 'rgba(255,255,255,0.2)';
+            closeBtn.style.color = 'white';
+        });
+
+        closeBtn.addEventListener('mouseleave', () => {
+            closeBtn.style.background = 'transparent';
+            closeBtn.style.color = 'rgba(255,255,255,0.7)';
+        });
 
         // Assemble panel
         panel.appendChild(closeBtn);
-        panel.appendChild(document.createTextNode('Neko capturer 😺'));
-        panel.appendChild(document.createElement('br'));
-        panel.appendChild(document.createElement('br'));
+        panel.appendChild(title);
         panel.appendChild(captureBtn);
+        panel.appendChild(progressContainer);
         panel.appendChild(status);
 
         document.body.appendChild(panel);
@@ -157,51 +240,81 @@
         });
 
         captureBtn.addEventListener('click', () => {
-            captureAsGif(canvas, 300, status);
+            captureAsGif(canvas, 100, 3, status, progressBar, progressContainer, captureBtn);
         });
     }
 
-    // Create GIF
-    function captureAsGif(canvas, frameDelay, statusElement) {
-        const encoder = new SimpleGIFEncoder(canvas.width, canvas.height);
+    // Create actual GIF
+    function captureAsGif(canvas, frameDelay, totalFrames, statusElement, progressBar, progressContainer, captureBtn) {
+        const encoder = new GIFEncoder(canvas.width, canvas.height);
         let frameCount = 0;
-        const totalFrames = 3;
+        let capturedFrames = 0;
+
+        captureBtn.disabled = true;
+        captureBtn.style.opacity = '0.6';
+        captureBtn.style.cursor = 'not-allowed';
+        progressContainer.style.display = 'block';
 
         function captureFrame() {
             frameCount++;
-            statusElement.textContent = `Capturing frame ${frameCount}/${totalFrames}...`;
+            const progress = (frameCount / totalFrames) * 100;
+            progressBar.style.width = `${Math.min(progress, 90)}%`;
+            statusElement.textContent = `📸 Capturing frame ${frameCount}/${totalFrames}...`;
 
             const result = encoder.addFrame(canvas, frameDelay);
-            if (!result) {
-                console.log(`Frame ${frameCount} is a duplicate and was skipped.`);
-                frameCount--; // Don't count duplicate frames
+            if (result) {
+                capturedFrames++;
+                console.log(`Frame ${frameCount} captured successfully`);
+            } else {
+                console.log(`Frame ${frameCount} was a duplicate and skipped`);
             }
 
             if (frameCount < totalFrames) {
                 setTimeout(captureFrame, frameDelay);
             } else {
-                statusElement.textContent = 'Creating frame package...';
-                encoder.renderAsAPNG().then(frames => {
-                    frames.forEach((frame, index) => {
-                        setTimeout(() => {
+                progressBar.style.width = '95%';
+                statusElement.textContent = '🎬 Creating GIF...';
+                
+                setTimeout(async () => {
+                    try {
+                        const gifUrl = await encoder.renderGIF();
+                        if (gifUrl && capturedFrames > 0) {
+                            // Create download link
                             const link = document.createElement('a');
-                            link.download = frame.name;
-                            link.href = frame.data;
+                            link.download = `wigglypaint-animation-${new Date().getTime()}.gif`;
+                            link.href = gifUrl;
                             link.style.display = 'none';
                             document.body.appendChild(link);
                             link.click();
                             document.body.removeChild(link);
-                        }, index * 200);
-                    });
-
-                    statusElement.textContent = 'Frames saved! Combine with online tool.';
+                            
+                            progressBar.style.width = '100%';
+                            statusElement.textContent = `🎉 GIF saved! (${capturedFrames} frames)`;
+                            
+                            // Clean up URL
+                            setTimeout(() => URL.revokeObjectURL(gifUrl), 5000);
+                        } else {
+                            statusElement.textContent = '❌ No frames captured or error occurred';
+                        }
+                    } catch (error) {
+                        console.error('Error creating GIF:', error);
+                        statusElement.textContent = '❌ Error creating GIF';
+                    }
+                    
+                    // Reset UI
                     setTimeout(() => {
-                        statusElement.textContent = 'Ready to capture';
+                        progressContainer.style.display = 'none';
+                        progressBar.style.width = '0%';
+                        statusElement.textContent = 'Ready to capture ✨';
+                        captureBtn.disabled = false;
+                        captureBtn.style.opacity = '1';
+                        captureBtn.style.cursor = 'pointer';
                     }, 3000);
-                });
+                }, 500);
             }
         }
 
-        setTimeout(captureFrame, 100);
+        statusElement.textContent = '⏳ Starting capture in 1 second...';
+        setTimeout(captureFrame, 1000);
     }
 })();
