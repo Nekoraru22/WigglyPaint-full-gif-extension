@@ -48,13 +48,10 @@
             let hash1 = 0;
             let hash2 = 0;
             
-            // Create two different hashes for better collision resistance
-            const step = Math.max(1, Math.floor(pixels.length / 1000)); // Sample ~1000 pixels
+            const step = Math.max(1, Math.floor(pixels.length / 1000));
             
-            for (let i = 0; i < pixels.length; i += step * 4) { // Skip by RGBA groups
-                // First hash using R and G channels
+            for (let i = 0; i < pixels.length; i += step * 4) {
                 hash1 = ((hash1 << 5) - hash1 + pixels[i] + (pixels[i + 1] << 8)) & 0xffffffff;
-                // Second hash using B and A channels
                 hash2 = ((hash2 << 3) - hash2 + pixels[i + 2] + (pixels[i + 3] << 8)) & 0xffffffff;
             }
             
@@ -64,12 +61,10 @@
         isDuplicateFrame(newImageData) {
             if (this.frames.length === 0) return false;
             
-            // First, try hash comparison (fast)
             const newHash = this.generateFrameHash(newImageData);
             
             for (let i = 0; i < this.frameHashes.length; i++) {
                 if (this.frameHashes[i] === newHash) {
-                    // Hash match found, do pixel-level verification to avoid false positives
                     if (this.areFramesActuallyIdentical(newImageData, this.frames[i])) {
                         console.log(`Frame is duplicate of frame ${i} (verified)`);
                         return true;
@@ -82,7 +77,6 @@
             return false;
         }
 
-        // Pixel-level verification method
         areFramesActuallyIdentical(imageData1, imageData2, tolerance = 3) {
             const pixels1 = imageData1.data;
             const pixels2 = imageData2.data;
@@ -122,7 +116,6 @@
             }
         }
 
-        // Create GIF binary data
         async createGIF() {
             if (this.frames.length === 0) {
                 console.log('No frames to encode');
